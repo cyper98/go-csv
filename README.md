@@ -1,15 +1,72 @@
 # go-csv
 
-Export **CSV**, **XLSX**, and bundle multiple files into **ZIP** in a style similar to “fast-csv” (Node.js) but written in **Go**.  
-Designed for **streaming**, each row is a `[]any`, auto-converted to string/number, with support for headers, BOM, CRLF, and ZIP compression.
+Lightweight Excel/CSV library for Go - zero dependencies.
 
-- **No external libraries**: only `encoding/csv`, `archive/zip`, `encoding/xml`, etc.
-- **Streaming support**: write rows one by one, avoiding memory blow-up.
-- **Simple API**: just pass `[]any` per row, like fast-csv.
-- **ZIP support**: compress from in-memory buffers or existing file paths.
+## Features
 
-## Requirements
-- Go 1.20+ (recommended 1.21+)
+### CSV
+- Read & Write
+- Streaming (`<-chan []any`)
+- Custom delimiter (Comma, Tab, etc.)
+- BOM for UTF-8
+- CR/LF line endings
+- Comment lines support
+- Validation functions
+
+### XLSX
+- Read & Write (single/multi-sheet)
+- Multi-sheet with `NewXLSXWriter()`
+- Data types: String, Number, Date/Time
+- Column name caching (1024 first columns)
+- Rich text support
+
+### Styles
+- Font (Bold, Italic, Underline, Size, Color, Name)
+- Fill (Pattern, FGColor, BGColor)
+- Border (Left, Right, Top, Bottom, Style, Color)
+- Alignment (Horizontal, Vertical, Wrap, Rotation, Indent)
+- Number formats
+
+### Charts (18+ types)
+- Line, Line3D, Column, Column3D
+- Bar, Bar3D, Area, Area3D
+- Pie, Pie3D, PieOfPie, Doughnut
+- Scatter, Radar, RadarArea, RadarMarker
+- Surface, Stock
+- Grouping (Standard, Stacked, PercentStacked, Clustered)
+- Legend, Axis titles, Data labels, Markers
+
+### Pivot Tables
+- Row/Column/Data fields
+- Grand totals
+- Compact/Outline view
+- Multiple data fields
+
+### VBA
+- Modules, Procedures, Arguments
+
+### Advanced
+- Conditional Formatting
+- AutoFilter
+- Freeze Panes
+- Merge Cells
+- Data Validation (dropdown, rules)
+- Comments
+- Tables
+- Images (placeholder)
+- Encryption/Decryption
+- Sheet Protection
+
+### Formulas (30+ functions)
+- Math: SUM, AVERAGE, COUNT, COUNTA, MAX, MIN, ABS, ROUND, FLOOR, CEILING, SQRT, POWER, MOD
+- Logic: IF, AND, OR, NOT
+- Text: LEN, UPPER, LOWER, TRIM, LEFT, RIGHT, MID, CONCATENATE, REPLACE, SUBSTITUTE
+- Date: DATE, YEAR, MONTH, DAY, WEEKDAY, TODAY, NOW
+- Info: ISBLANK, ISNUMBER, ISTEXT, ISERROR, TRUE, FALSE, N
+
+### ZIP
+- Compress buffers/files
+- Parallel compression
 
 ## Installation
 
@@ -17,204 +74,128 @@ Designed for **streaming**, each row is a `[]any`, auto-converted to string/numb
 go get github.com/aminofox/go-csv
 ```
 
-Project structure:
-```
-go-csv/
-  csv.go
-  xlsx.go
-  zip.go
-  util.go
-  examples/
-    main.go
-  README.md
-  go.mod
-```
-
-## Main API
+## Quick Usage
 
 ### CSV
 ```go
-// Write to file
-func WriteCSVFile(
-  filePath string,
-  headers []any,
-  data [][]any,
-  opt *CSVOptions,
-  toString ToStringFunc,
-) error
-
-// Write to writer (streaming with rows <-chan []any)
-func WriteCSVToWriter(
-  w io.Writer,
-  headers []any,
-  rows <-chan []any,
-  opt *CSVOptions,
-  toString ToStringFunc,
-) error
-
-type CSVOptions struct {
-  Comma  rune  // default ','
-  UseCRLF bool // \r\n
-  BOM    bool  // write UTF-8 BOM
-}
-
-// Custom type-to-string converter
-type ToStringFunc func(v any) (string, bool)
+go_csv.WriteCSVFile("out.csv", headers, data, &go_csv.CSVOptions{BOM: true}, nil)
+headers, rows, _ := go_csv.ReadCSVFile("data.csv", &go_csv.CSVReadOptions{HasHeader: true})
 ```
 
 ### XLSX
-Minimal XLSX (no external libraries), built using `archive/zip` + XML. Text cells use `inlineStr`, numbers use `t="n"`.
-
 ```go
-// Write to file (single sheet)
-func WriteXLSXFile(
-  filePath string,
-  sheetName string,
-  headers []any,
-  data [][]any,
-) error
+xw := go_csv.NewXLSXWriter()
+xw.AddSheet("Sheet1")
+xw.AddSheet("Sheet2")
+xw.WriteRow("Sheet1", []any{"A", "B"})
+xw.Close()
+xw.WriteToFile("out.xlsx")
+```
 
-// Write to writer (streaming with rows <-chan []any)
-func WriteXLSXToWriter(
-  w io.Writer,
-  sheetName string,
-  headers []any,
-  rows <-chan []any,
-) error
+### Styles
+```go
+style := &go_csv.Style{
+    Font:      &go_csv.Font{Bold: true, Size: 12, Color: "FF0000"},
+    Fill:      &go_csv.Fill{Pattern: "solid", FGColor: "FFFF00"},
+    Alignment: &go_csv.Alignment{Horizontal: "center"},
+}
+xw.SetCellStyle("Sheet1", "A1", style)
+```
+
+### Charts
+```go
+chart := &go_csv.Chart{
+    Type: go_csv.ChartColumn,
+    Title: "Sales",
+    Series: []go_csv.ChartSeries{
+        {Name: "Q1", Categories: "A1:A4", Values: "B1:B4"},
+        {Name: "Q2", Categories: "A1:A4", Values: "C1:C4"},
+    },
+    Legend:    true,
+    LegendPos: "r",
+    XAxisLabel: "Month",
+    YAxisLabel: "Sales",
+}
+xw.AddChartFull("Sheet1", "E1", chart)
+```
+
+### Formulas
+```go
+fc := go_csv.NewFormulaContext()
+fc.SetCellValue("Sheet1", "A1", 100)
+fc.SetCellValue("Sheet1", "A2", 200)
+result := fc.Evaluate("=SUM(A1:A2)")
+// result.Value = 300
+```
+
+### Encryption
+```go
+encrypted, _ := go_csv.EncryptXLSX(data, "password")
+decrypted, _ := go_csv.DecryptXLSX(encrypted, "password")
 ```
 
 ### ZIP
 ```go
-// Compress in-memory buffers into a zip
-func ZipBuffers(outputZipPath string, files map[string][]byte) error
-
-// Compress existing files on disk
-func ZipPaths(outputZipPath string, paths []string, baseDir string) error
+go_csv.ZipBuffers("out.zip", files)
+go_csv.ZipBuffersParallel("out.zip", files)
 ```
 
-## Quick Usage
+## API Reference
 
-### 1) Write CSV from `[][]any`
-```go
-headers := []any{"id", "name", "score", "active"}
-data := [][]any{
-  {1, "alice", 9.5, true},
-  {2, "bob", 8.1, false},
-  {3, "seang", 10, true},
-}
+### CSV
+| Function | Description |
+|----------|-------------|
+| `WriteCSVFile` | Write CSV file |
+| `WriteCSVToWriter` | Write with streaming |
+| `ReadCSVFile` | Read CSV file |
+| `ReadCSVFromReader` | Read with reader |
+| `ReadAllCSV` | Read all to memory |
+| `ReadCSVAsAny` | Read as []any |
 
-err := export.WriteCSVFile(
-  "out/users.csv",
-  headers,
-  data,
-  &export.CSVOptions{Comma: ',', BOM: true},
-  nil, // no custom toString
-)
-if err != nil { panic(err) }
-```
+### XLSX
+| Function | Description |
+|----------|-------------|
+| `WriteXLSXFile` | Write (single sheet) |
+| `WriteXLSXToWriter` | Write (streaming) |
+| `NewXLSXWriter` | Multi-sheet writer |
+| `AddSheet` | Add sheet |
+| `WriteRow` | Write row |
+| `WriteToFile` | Save to file |
+| `SetCellStyle` | Apply style |
+| `MergeCell` | Merge cells |
+| `AddChartFull` | Add chart |
+| `AddPivotTableFull` | Add pivot table |
+| `AddCommentFull` | Add comment |
+| `SetDataValidationFull` | Add validation |
+| `AutoFilterFull` | Add autofilter |
+| `SetFreezePane` | Freeze panes |
+| `ProtectSheet` | Protect sheet |
+| `ReadXLSXFile` | Read XLSX |
+| `AddImage` | Add image |
 
-### 2) Streaming CSV (row by row, avoids loading all into memory)
-```go
-f, _ := os.Create("out/users_stream.csv")
-defer f.Close()
+### Formulas
+| Function | Description |
+|----------|-------------|
+| `NewFormulaContext` | Create context |
+| `Evaluate` | Evaluate formula |
+| `SetCellValue` | Set cell |
+| `SetSheetData` | Set sheet data |
+| `GetCellValue` | Get cell value |
 
-rows := make(chan []any, 1024)
-go func() {
-  for _, r := range data { rows <- r }
-  close(rows)
-}()
+### ZIP
+| Function | Description |
+|----------|-------------|
+| `ZipBuffers` | Compress buffers |
+| `ZipPaths` | Compress files |
+| `ZipBuffersParallel` | Parallel compress |
+| `ZipPathsParallel` | Parallel compress |
 
-err := export.WriteCSVToWriter(
-  f,
-  headers,
-  rows,
-  &export.CSVOptions{BOM: true},
-  nil,
-)
-if err != nil { panic(err) }
-```
-
-### 3) Write XLSX from `[][]any`
-```go
-err := export.WriteXLSXFile("out/users.xlsx", "Users", headers, data)
-if err != nil { panic(err) }
-```
-
-### 4) Streaming XLSX
-```go
-var buf bytes.Buffer
-rowch := make(chan []any, 4)
-go func() {
-  rowch <- []any{"A", "B", "C"}
-  rowch <- []any{1, 2, 3}
-  close(rowch)
-}()
-
-if err := export.WriteXLSXToWriter(&buf, "StreamSheet", nil, rowch); err != nil {
-  panic(err)
-}
-_ = os.WriteFile("out/stream.xlsx", buf.Bytes(), 0644)
-```
-
-### 5) ZIP multiple files
-- **From buffers**:
-```go
-csvBytes, _ := os.ReadFile("out/users.csv")
-xlsxBytes, _ := os.ReadFile("out/users.xlsx")
-
-files := map[string][]byte{
-  "csv/users.csv":   csvBytes,
-  "xlsx/users.xlsx": xlsxBytes,
-}
-if err := export.ZipBuffers("out/exports.zip", files); err != nil {
-  panic(err)
-}
-```
-
-- **From file paths**:
-```go
-paths := []string{"out/users.csv", "out/users_stream.csv", "out/users.xlsx"}
-if err := export.ZipPaths("out/exports_paths.zip", paths, "out"); err != nil {
-  panic(err)
-}
-```
-
-## Custom toString
-If you want to control formatting (e.g. currency, datetime), provide a `toString`:
-```go
-customToString := func(v any) (string, bool) {
-  switch t := v.(type) {
-  case float64:
-    return fmt.Sprintf("%.2f", t), true
-  case time.Time:
-    return t.In(time.FixedZone("UTC+7", 7*3600)).Format("2006-01-02 15:04:05"), true
-  default:
-    return "", false // fallback to DefaultToString
-  }
-}
-
-_ = export.WriteCSVFile("out/custom.csv", headers, data, &export.CSVOptions{BOM:true}, customToString)
-```
-
-## Notes & Limitations
-- **XLSX**:
-  - Single sheet (`sheet1.xml`) for now.
-  - Text as `inlineStr`, numbers as `t="n"`. No styles/formatting (dates, number formats).
-- **CSV**: set `Comma` for different locales; enable `BOM: true` for Excel on Windows.
-- **Streaming**: use `chan []any` to handle very large datasets.
-- **Zero dependencies**: pure Go stdlib.
-
-## Performance Tips
-- Use **streaming** for large datasets (millions of rows).
-- Increase channel buffer (`rows := make(chan []any, 4096)`).
-- Minimize string formatting in hot paths; centralize in `toString`.
-
-## Full Example
-See `examples/main.go` in the repo:
-
-```bash
-go run ./examples
-```
+### Encryption
+| Function | Description |
+|----------|-------------|
+| `EncryptXLSX` | Encrypt XLSX |
+| `DecryptXLSX` | Decrypt XLSX |
 
 ## License
+
 MIT
